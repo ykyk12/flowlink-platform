@@ -1,0 +1,51 @@
+# 一键起全栈：PostgreSQL + Redis + FlowLink（生产画像）
+# 启动：docker compose up -d --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: flowlink-postgres
+    environment:
+      POSTGRES_DB: flowlink
+      POSTGRES_USER: flowlink
+      POSTGRES_PASSWORD: flowlink
+    ports:
+      - "5432:5432"
+    volumes:
+      - flowlink-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowlink -d flowlink"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: flowlink-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - flowlink-redis:/data
+
+  app:
+    build: .
+    container_name: flowlink-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/flowlink
+      SPRING_DATASOURCE_USERNAME: flowlink
+      SPRING_DATASOURCE_PASSWORD: flowlink
+      SPRING_DATA_REDIS_HOST: redis
+      APP_FEATURE_STORE: redis
+    ports:
+      - "8090:8090"
+    restart: unless-stopped
+
+volumes:
+  flowlink-pg:
+  flowlink-redis:

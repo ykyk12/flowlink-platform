@@ -1,0 +1,22 @@
+# 生产画像：PostgreSQL + Redis 特征存储
+# 通过 docker compose 启动时由环境变量注入；本地手工启动可用 --spring.profiles.active=prod
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/flowlink
+    driver-class-name: org.postgresql.Driver
+    username: flowlink
+    password: flowlink
+    hikari:
+      maximum-pool-size: 16
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+app:
+  feature-store: redis
+  # 生产建议关闭演示数据
+  bootstrap-demo-data: false
+
+logging:
+  level:
+    com.flowlink: INFO

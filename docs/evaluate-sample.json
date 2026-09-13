@@ -1,0 +1,20 @@
+{
+  "ruleSetKey": "order_risk",
+  "subjectId": "user-10086",
+  "eventType": "ORDER_CREATE",
+  "features": {
+    "amount": 8800,
+    "deviceAgeDays": 5,
+    "riskLevel": "LOW",
+    "vip": false
+  },
+  "attributes": {
+    "channel": "app",
+    "region": "cn"
+  },
+  "counters": {
+    "order_count_60s": 60
+  },
+  "idempotencyKey": "order-20260913-0001",
+  "explain": true
+}
