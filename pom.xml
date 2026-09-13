@@ -13,7 +13,7 @@
 
     <groupId>com.flowlink</groupId>
     <artifactId>flowlink-platform</artifactId>
-    <version>1.1.1</version>
+    <version>1.1.2</version>
     <name>flowlink-platform</name>
     <description>FlowLink —— 企业级实时风控决策平台：规则 DSL、版本治理、可解释决策引擎、决策回放对比</description>
 

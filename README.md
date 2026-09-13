@@ -47,7 +47,7 @@
                                              ▼
  客户端 ──X-API-Key──► 鉴权拦截器 → 租户上下文 → 配额限流（滑动窗口）
                                              │
- POST /decisions:evaluate ──► 幂等检查 ──► 决策引擎（灰度路由 + 规则求值 + 命中路径）
+ POST /decisions/evaluate ──► 幂等检查 ──► 决策引擎（灰度路由 + 规则求值 + 命中路径）
                                              │
                           ┌──────────────────┼───────────────────┐
                           ▼                  ▼                   ▼
@@ -82,7 +82,7 @@ mvn spring-boot:run
 # 1) 评估一次决策（explain=true 返回完整求值轨迹）
 curl -H "X-API-Key: demo-tenant-key" -H "Content-Type: application/json" \
      -d @docs/evaluate-sample.json \
-     http://localhost:8090/api/v1/decisions:evaluate
+     http://localhost:8090/api/v1/decisions/evaluate
 
 # 2) 新建规则版本并发布
 curl -X POST -H "X-API-Key: demo-tenant-key" -H "Content-Type: application/json" \
@@ -109,8 +109,8 @@ curl -H "X-API-Key: demo-tenant-key" "http://localhost:8090/api/v1/audits/stats"
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/v1/decisions:evaluate` | 单次决策（幂等键可选） |
-| POST | `/api/v1/decisions:batch` | 批量决策（上限 `app.engine.max-batch-size`） |
+| POST | `/api/v1/decisions/evaluate` | 单次决策（幂等键可选） |
+| POST | `/api/v1/decisions/batch` | 批量决策（上限 `app.engine.max-batch-size`） |
 | GET | `/api/v1/decisions/{traceId}` | 按 traceId 追溯该次决策的审计记录 |
 | POST/GET | `/api/v1/rule-sets` | 新建 / 列出规则集 |
 | GET | `/api/v1/rule-sets/{key}` | 规则集详情（生效版本、灰度版本、模式、规则数） |
@@ -221,6 +221,7 @@ k6 run -e BASE=http://localhost:8090 -e API_KEY=demo-tenant-key scripts/k6-decid
 
 | 版本 | 说明 |
 |---|---|
+| 1.1.2 | 修正决策接口路径：`/decisions:evaluate` → `/decisions/evaluate`（`:action` 后缀不被 Spring MVC 路由解析，请求落入静态资源处理器并抛 NoResourceFoundException） |
 | 1.1.1 | 修复 `ApiResponse` 记录组件与私有静态方法重名（record 访问器必须 public）导致的编译失败 |
 | 1.1.0 | 首个功能提交：规则 DSL + 版本治理 + 决策引擎 + 窗口特征 + 幂等/审计 + 回放对比 + 多租户配额 + 可观测 + 测试 + Docker/CI/k6 |
 | 1.0.0 | 架构设计与文档版（无功能代码） |

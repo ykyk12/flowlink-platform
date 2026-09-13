@@ -49,7 +49,7 @@ class DecisionApiIntegrationTest {
 
     @Test
     void rejectsMissingApiKey() throws Exception {
-        mockMvc.perform(post("/api/v1/decisions:evaluate")
+        mockMvc.perform(post("/api/v1/decisions/evaluate")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body("user-no-key", null)))
                 .andExpect(status().isUnauthorized())
@@ -58,7 +58,7 @@ class DecisionApiIntegrationTest {
 
     @Test
     void evaluatesAndWritesAuditTraceableByTraceId() throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/v1/decisions:evaluate")
+        MvcResult result = mockMvc.perform(post("/api/v1/decisions/evaluate")
                         .header("X-API-Key", DEMO_KEY)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body("user-trace-" + System.nanoTime(), null)))
@@ -81,7 +81,7 @@ class DecisionApiIntegrationTest {
     @Test
     void idempotencyKeyReturnsFirstResult() throws Exception {
         String key = "idem-" + System.nanoTime();
-        MvcResult first = mockMvc.perform(post("/api/v1/decisions:evaluate")
+        MvcResult first = mockMvc.perform(post("/api/v1/decisions/evaluate")
                         .header("X-API-Key", DEMO_KEY)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body("user-idem", key)))
@@ -91,7 +91,7 @@ class DecisionApiIntegrationTest {
         String firstTrace = first.getResponse().getContentAsString()
                 .replaceAll("(?s).*\"traceId\"\\s*:\\s*\"([^\"]+)\".*", "$1");
 
-        MvcResult second = mockMvc.perform(post("/api/v1/decisions:evaluate")
+        MvcResult second = mockMvc.perform(post("/api/v1/decisions/evaluate")
                         .header("X-API-Key", DEMO_KEY)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body("user-idem", key)))
@@ -127,11 +127,11 @@ class DecisionApiIntegrationTest {
                   "features": { "amount": 1 } }
                 """.formatted(key);
 
-        mockMvc.perform(post("/api/v1/decisions:evaluate").header("X-API-Key", rawKey)
+        mockMvc.perform(post("/api/v1/decisions/evaluate").header("X-API-Key", rawKey)
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/decisions:evaluate").header("X-API-Key", rawKey)
+        mockMvc.perform(post("/api/v1/decisions/evaluate").header("X-API-Key", rawKey)
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.code").value("QUOTA_EXCEEDED"));

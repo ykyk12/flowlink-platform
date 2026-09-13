@@ -43,7 +43,7 @@ export default function () {
     explain: false,
   });
 
-  const res = http.post(`${BASE}/api/v1/decisions:evaluate`, payload, {
+  const res = http.post(`${BASE}/api/v1/decisions/evaluate`, payload, {
     headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
   });
 

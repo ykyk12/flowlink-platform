@@ -48,7 +48,7 @@ public class DemoDataInitializer implements ApplicationRunner {
         ruleSetService.publish(tenant.getId(), DEMO_RULE_SET_KEY, version.version());
 
         log.info("演示数据就绪：租户 Key={}，规则集={}，管理 Key={}", DEMO_API_KEY, DEMO_RULE_SET_KEY, DEMO_ADMIN_KEY);
-        log.info("示例：curl -H \"X-API-Key: {}\" -H \"Content-Type: application/json\" -d @docs/evaluate-sample.json {}/api/v1/decisions:evaluate",
+        log.info("示例：curl -H \"X-API-Key: {}\" -H \"Content-Type: application/json\" -d @docs/evaluate-sample.json {}/api/v1/decisions/evaluate",
                 DEMO_API_KEY, "http://localhost:8090");
     }
 

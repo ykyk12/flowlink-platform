@@ -23,12 +23,12 @@ public class DecisionController {
     private final DecisionService decisionService;
     private final AuditService auditService;
 
-    @PostMapping(":evaluate")
+    @PostMapping("/evaluate")
     public ApiResponse<EvaluateResponse> evaluate(@Valid @RequestBody EvaluateRequest request) {
         return ApiResponse.ok(decisionService.evaluate(TenantContext.requireTenantId(), request));
     }
 
-    @PostMapping(":batch")
+    @PostMapping("/batch")
     public ApiResponse<List<EvaluateResponse>> batch(@Valid @RequestBody BatchEvaluateRequest request) {
         return ApiResponse.ok(decisionService.evaluateBatch(TenantContext.requireTenantId(), request));
     }
