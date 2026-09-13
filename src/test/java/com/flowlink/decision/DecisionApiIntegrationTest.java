@@ -1,5 +1,6 @@
 package com.flowlink.decision;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.flowlink.bootstrap.DemoDataInitializer;
 import com.flowlink.ruleset.RuleSetDtos;
 import com.flowlink.ruleset.RuleSetService;
@@ -32,6 +33,18 @@ class DecisionApiIntegrationTest {
     private TenantService tenantService;
     @Autowired
     private RuleSetService ruleSetService;
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    /**
+     * 取业务 traceId（data.traceId）。
+     * 不能用贪婪正则匹配 "traceId"：统一响应体里 traceId 是**最后一个**字段，
+     * 贪婪匹配会取到外层 ApiResponse.traceId（本次请求的链路 id），幂等重放场景下它与首次决策不同。
+     */
+    private String dataTraceId(MvcResult result) throws Exception {
+        return objectMapper.readTree(result.getResponse().getContentAsString())
+                .path("data").path("traceId").asText();
+    }
 
     private String body(String subjectId, String idempotencyKey) {
         return """
@@ -69,8 +82,7 @@ class DecisionApiIntegrationTest {
                 .andExpect(jsonPath("$.data.traces").isArray())
                 .andReturn();
 
-        String json = result.getResponse().getContentAsString();
-        String traceId = json.replaceAll("(?s).*\"traceId\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+        String traceId = dataTraceId(result);
 
         mockMvc.perform(get("/api/v1/decisions/" + traceId).header("X-API-Key", DEMO_KEY))
                 .andExpect(status().isOk())
@@ -88,8 +100,7 @@ class DecisionApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.replayed").value(false))
                 .andReturn();
-        String firstTrace = first.getResponse().getContentAsString()
-                .replaceAll("(?s).*\"traceId\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+        String firstTrace = dataTraceId(first);
 
         MvcResult second = mockMvc.perform(post("/api/v1/decisions/evaluate")
                         .header("X-API-Key", DEMO_KEY)
@@ -98,8 +109,7 @@ class DecisionApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.replayed").value(true))
                 .andReturn();
-        String secondTrace = second.getResponse().getContentAsString()
-                .replaceAll("(?s).*\"traceId\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+        String secondTrace = dataTraceId(second);
 
         org.junit.jupiter.api.Assertions.assertEquals(firstTrace, secondTrace);
     }

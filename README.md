@@ -221,6 +221,7 @@ k6 run -e BASE=http://localhost:8090 -e API_KEY=demo-tenant-key scripts/k6-decid
 
 | 版本 | 说明 |
 |---|---|
+| 1.1.3 | 修正决策 API 集成测试的 traceId 取值：贪婪正则误取外层 `ApiResponse.traceId`（本次请求链路 id），改为按 `data.traceId` 结构解析——幂等重放本就应返回首次决策的 traceId |
 | 1.1.2 | 修正决策接口路径：`/decisions:evaluate` → `/decisions/evaluate`（`:action` 后缀不被 Spring MVC 路由解析，请求落入静态资源处理器并抛 NoResourceFoundException） |
 | 1.1.1 | 修复 `ApiResponse` 记录组件与私有静态方法重名（record 访问器必须 public）导致的编译失败 |
 | 1.1.0 | 首个功能提交：规则 DSL + 版本治理 + 决策引擎 + 窗口特征 + 幂等/审计 + 回放对比 + 多租户配额 + 可观测 + 测试 + Docker/CI/k6 |
