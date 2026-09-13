@@ -6,18 +6,19 @@ import org.slf4j.MDC;
 public record ApiResponse<T>(boolean success, String code, String message, T data, String traceId) {
 
     public static <T> ApiResponse<T> ok(T data) {
-        return new ApiResponse<>(true, ErrorCode.OK.name(), ErrorCode.OK.defaultMessage(), data, traceId());
+        return new ApiResponse<>(true, ErrorCode.OK.name(), ErrorCode.OK.defaultMessage(), data, currentTraceId());
     }
 
     public static ApiResponse<Void> ok() {
-        return new ApiResponse<>(true, ErrorCode.OK.name(), ErrorCode.OK.defaultMessage(), null, traceId());
+        return new ApiResponse<>(true, ErrorCode.OK.name(), ErrorCode.OK.defaultMessage(), null, currentTraceId());
     }
 
     public static <T> ApiResponse<T> error(ErrorCode code, String message) {
-        return new ApiResponse<>(false, code.name(), message == null ? code.defaultMessage() : message, null, traceId());
+        return new ApiResponse<>(false, code.name(), message == null ? code.defaultMessage() : message, null, currentTraceId());
     }
 
-    private static String traceId() {
+    /** 注意：方法名不能叫 traceId()——record 组件的访问器必须 public，同名私有方法会被判定为非法访问器。 */
+    private static String currentTraceId() {
         return MDC.get(TraceIdFilter.TRACE_ID);
     }
 }

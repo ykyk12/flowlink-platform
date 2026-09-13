@@ -221,6 +221,7 @@ k6 run -e BASE=http://localhost:8090 -e API_KEY=demo-tenant-key scripts/k6-decid
 
 | 版本 | 说明 |
 |---|---|
+| 1.1.1 | 修复 `ApiResponse` 记录组件与私有静态方法重名（record 访问器必须 public）导致的编译失败 |
 | 1.1.0 | 首个功能提交：规则 DSL + 版本治理 + 决策引擎 + 窗口特征 + 幂等/审计 + 回放对比 + 多租户配额 + 可观测 + 测试 + Docker/CI/k6 |
 | 1.0.0 | 架构设计与文档版（无功能代码） |
 
