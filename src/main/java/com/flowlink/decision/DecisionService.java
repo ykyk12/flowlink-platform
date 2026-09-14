@@ -72,7 +72,14 @@ public class DecisionService {
             compiled = ruleSet.active();
         }
 
-        DecisionResult result = engine.evaluate(request.ruleSetKey(), version, compiled, context);
+        DecisionResult result;
+        try {
+            result = engine.evaluate(request.ruleSetKey(), version, compiled, context);
+        } catch (RuntimeException ex) {
+            // 引擎为纯内存求值，异常通常意味着规则/上下文缺陷；打点便于监控决策失败率，不吞异常
+            metrics.recordEngineError();
+            throw ex;
+        }
         EvaluateResponse response = new EvaluateResponse(
                 traceId,
                 request.ruleSetKey(),

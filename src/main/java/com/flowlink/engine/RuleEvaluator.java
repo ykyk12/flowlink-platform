@@ -5,16 +5,34 @@ import com.flowlink.dsl.Operator;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
  * 条件求值器：递归求值条件树，并把每个节点的结果写入轨迹（可解释）。
  * 缺失值语义：除 EXISTS 外一律 false —— 宁可漏过，不可误命中。
+ *
+ * 正则策略：MATCHES 的 Pattern 按正则串做有界 LRU 缓存，编译一次、多次执行，
+ * 对标 AviatorScript / QLExpress 的"编译一次、多次求值"模型，避免热路径反复编译。
  */
 @Component
 public class RuleEvaluator {
+
+    /** 已编译正则的上限：规则数本就有界（默认 ≤500），这里再兜一层防规则抖动导致无界增长。 */
+    private static final int MAX_CACHED_PATTERNS = 1024;
+
+    /** access-order 的 LinkedHashMap 做 LRU，配合 synchronized 保证线程安全。 */
+    private final Map<String, Pattern> patternCache = Collections.synchronizedMap(
+            new LinkedHashMap<>(64, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Pattern> eldest) {
+                    return size() > MAX_CACHED_PATTERNS;
+                }
+            });
 
     public boolean evaluate(ConditionNode node, DecisionContext context, String ruleId,
                             String path, List<EvaluationTrace> traces) {
@@ -120,17 +138,36 @@ public class RuleEvaluator {
     }
 
     private boolean matchesRegex(Object actual, Object expected) {
-        return expected != null && Pattern.compile(String.valueOf(expected)).matcher(String.valueOf(actual)).find();
+        if (expected == null) {
+            return false;
+        }
+        String regex = String.valueOf(expected);
+        Pattern pattern;
+        synchronized (patternCache) {
+            pattern = patternCache.get(regex);
+            if (pattern == null) {
+                // 发布前 RuleValidator 已校验语法，此处不会抛 PatternSyntaxException
+                pattern = Pattern.compile(regex);
+                patternCache.put(regex, pattern);
+            }
+        }
+        return pattern.matcher(String.valueOf(actual)).find();
     }
 
-    private Optional<Double> toDouble(Object value) {
-        if (value instanceof Number number) {
+    private Optional<Double> toDouble(Object value) {        if (value instanceof Number number) {
             return Optional.of(number.doubleValue());
         }
         try {
             return Optional.of(Double.parseDouble(String.valueOf(value)));
         } catch (NumberFormatException e) {
             return Optional.empty();
+        }
+    }
+
+    /** 测试可见：当前已编译并缓存的正则数量。 */
+    int cachedPatternCount() {
+        synchronized (patternCache) {
+            return patternCache.size();
         }
     }
 

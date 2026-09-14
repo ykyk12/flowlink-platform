@@ -17,6 +17,7 @@ public class DecisionMetrics {
     private final ConcurrentHashMap<String, Counter> canaryCounters = new ConcurrentHashMap<>();
     private final Timer latencyTimer;
     private final Counter idempotentHits;
+    private final Counter engineErrors;
 
     public DecisionMetrics(MeterRegistry registry) {
         this.registry = registry;
@@ -26,6 +27,9 @@ public class DecisionMetrics {
                 .register(registry);
         this.idempotentHits = Counter.builder("flowlink_idempotent_hits_total")
                 .description("幂等键命中次数")
+                .register(registry);
+        this.engineErrors = Counter.builder("flowlink_engine_errors_total")
+                .description("决策引擎求值抛异常次数")
                 .register(registry);
     }
 
@@ -47,5 +51,9 @@ public class DecisionMetrics {
 
     public void recordIdempotentHit() {
         idempotentHits.increment();
+    }
+
+    public void recordEngineError() {
+        engineErrors.increment();
     }
 }

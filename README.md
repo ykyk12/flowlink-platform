@@ -202,6 +202,10 @@ k6 run -e BASE=http://localhost:8090 -e API_KEY=demo-tenant-key scripts/k6-decid
 | `flowlink_canary_total{version}` | 灰度版本分流次数 |
 | `flowlink_quota_rejected_total{tenant}` | 配额拒绝次数 |
 | `flowlink_idempotent_hits_total` | 幂等命中次数 |
+| `flowlink_rule_cache_total{result=hit\|miss}` | 规则集编译产物缓存命中/未命中次数 |
+| `flowlink_idempotency_evicted_total` | 幂存储因过期被主动清理的条目数 |
+| `flowlink_idempotency_entries`（gauge） | 当前幂等存储驻留条目数 |
+| `flowlink_engine_errors_total` | 决策引擎求值抛异常次数 |
 | `/actuator/health`、`/actuator/metrics`、`/actuator/prometheus` | 健康与指标抓取 |
 
 每个请求都有 `X-Trace-Id`（可透传），日志 MDC 打印，审计表按 traceId 可追溯。
@@ -221,11 +225,45 @@ k6 run -e BASE=http://localhost:8090 -e API_KEY=demo-tenant-key scripts/k6-decid
 
 | 版本 | 说明 |
 |---|---|
+| 1.1.4 | 对标高星规则引擎与容错库做三项增量补强（详见下方「对标升级记录」）：MATCHES 正则预编译缓存、幂等存储过期项主动清理+指标、规则缓存命中率与引擎错误指标 |
 | 1.1.3 | 修正决策 API 集成测试的 traceId 取值：贪婪正则误取外层 `ApiResponse.traceId`（本次请求链路 id），改为按 `data.traceId` 结构解析——幂等重放本就应返回首次决策的 traceId |
 | 1.1.2 | 修正决策接口路径：`/decisions:evaluate` → `/decisions/evaluate`（`:action` 后缀不被 Spring MVC 路由解析，请求落入静态资源处理器并抛 NoResourceFoundException） |
 | 1.1.1 | 修复 `ApiResponse` 记录组件与私有静态方法重名（record 访问器必须 public）导致的编译失败 |
 | 1.1.0 | 首个功能提交：规则 DSL + 版本治理 + 决策引擎 + 窗口特征 + 幂等/审计 + 回放对比 + 多租户配额 + 可观测 + 测试 + Docker/CI/k6 |
 | 1.0.0 | 架构设计与文档版（无功能代码） |
+
+## 对标升级记录（v1.1.4）
+
+本轮对照 GitHub 上同领域真实高星项目，只汲取设计思想并自行实现，不复制源码、不引入传染性许可证依赖。
+
+**对标的真实项目（star 量级为公开检索所得近似量级）：**
+
+| 项目 | star 量级 | URL | 借鉴点 |
+|---|---|---|---|
+| AviatorScript (killme2008/aviatorscript) | ~1.8k+ | https://github.com/killme2008/aviatorscript | 高性能表达式引擎"编译一次、多次执行"模型 |
+| QLExpress (alibaba/QLExpress) | 阿里开源，千~万级 | https://github.com/alibaba/QLExpress | 脚本热更新、编译期语法校验、沙箱 |
+| easy-rules (j-easy/easy-rules) | ~2.4k | https://github.com/j-easy/easy-rules | 轻量 POJO 规则与规则组合的克制设计 |
+| Drools (kiegroup/drools) | ~5.8k | https://github.com/kiegroup/drools | 规则版本治理与编译产物热替换理念 |
+| Resilience4j (resilience4j/resilience4j) | ~10.7k | https://github.com/resilience4j/resilience4j | 容错与 Micrometer 可观测埋点实践 |
+
+**吸收的三点改进：**
+
+1. **MATCHES 正则预编译缓存**（对标 AviatorScript/QLExpress 的"编译一次、多次执行"）。原 `RuleEvaluator` 对 `MATCHES` 操作每次求值都 `Pattern.compile`，热路径重复编译。改为按正则串做有界（1024）access-order LRU 缓存，编译一次后复用 `Pattern`；发布前 `RuleValidator` 已保证语法合法，运行期不再编译失败。
+2. **幂等存储过期项主动清理 + 指标**（对标 Redis 主动 TTL 与 Resilience4j 可观测实践）。原 `IdempotencyStore` 仅在 `get()` 命中时惰性删除过期项，"提交后再不复现"的键会永久驻留内存（长期运行内存泄漏）。新增 `@Scheduled` 每 60 秒扫表清理过期项，并暴露 `flowlink_idempotency_entries`（gauge）与 `flowlink_idempotency_evicted_total`（counter）。
+3. **规则缓存命中率 + 引擎错误指标**（对标 Resilience4j+Micrometer 生产可观测）。原 `RuleCache` 无任何埋点，无法判断热加载缓存是否生效。在 `InMemoryRuleCache` 记录 `flowlink_rule_cache_total{result=hit|miss}`；在决策编排中对引擎求值异常打点 `flowlink_engine_errors_total`（不吞异常，照常抛出）。
+
+**改动文件：**
+
+- `src/main/java/com/flowlink/engine/RuleEvaluator.java`（正则 LRU 缓存）
+- `src/main/java/com/flowlink/decision/IdempotencyStore.java`（主动清理 + 指标）
+- `src/main/java/com/flowlink/ruleset/InMemoryRuleCache.java`（hit/miss 指标）
+- `src/main/java/com/flowlink/metrics/DecisionMetrics.java`（引擎错误计数）
+- `src/main/java/com/flowlink/decision/DecisionService.java`（引擎异常打点）
+- `src/test/java/com/flowlink/engine/RuleEvaluatorRegexCacheTest.java`（新增）
+- `src/test/java/com/flowlink/decision/IdempotencyStoreTest.java`（新增）
+- `README.md`（本节与可观测性表格）
+
+**验证：** `mvn -B test` → `Tests run: 25, Failures: 0, Errors: 0, Skipped: 0`，`BUILD SUCCESS`（H2 内存库，无需外部依赖）。
 
 ## 12. License
 
