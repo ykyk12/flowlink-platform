@@ -8,6 +8,7 @@ public enum ErrorCode {
     UNAUTHORIZED(401, "缺少或无效的 API Key"),
     FORBIDDEN(403, "无权访问该资源"),
     NOT_FOUND(404, "资源不存在"),
+    METHOD_NOT_ALLOWED(405, "请求方法不被允许"),
     CONFLICT(409, "资源状态冲突"),
     QUOTA_EXCEEDED(429, "超出配额，请稍后重试"),
     RULE_INVALID(422, "规则校验失败"),
