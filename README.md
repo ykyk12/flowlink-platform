@@ -120,6 +120,7 @@ curl -H "X-API-Key: demo-tenant-key" "http://localhost:8090/api/v1/audits/stats"
 | POST | `/api/v1/rule-sets/{key}/versions/{v}/publish` | 发布版本 |
 | POST | `/api/v1/rule-sets/{key}/versions/{v}/canary` | 灰度（`percent=0` 取消） |
 | POST | `/api/v1/rule-sets/{key}/rollback` | 回滚到上一个版本 |
+| POST | `/api/v1/sandbox/evaluate` | 规则预演：样本数据在指定版本上干跑，零副作用
 | POST | `/api/v1/replay` | 回放差异对比 |
 | GET | `/api/v1/audits`、`/audits/{traceId}`、`/audits/stats`、`/audits/recent` | 审计检索、追溯、决策分布、最近记录 |
 | POST/GET | `/api/v1/admin/tenants`（`X-Admin-Key`） | 租户创建/列表/轮换 Key/调整配额/启停用 |
@@ -225,6 +226,7 @@ k6 run -e BASE=http://localhost:8090 -e API_KEY=demo-tenant-key scripts/k6-decid
 
 | 版本 | 说明 |
 |---|---|
+| 1.1.5 | 第二轮深度升级：修两个真实 bug（幂等键 check-then-act 竞态、内存特征存储清理误删长窗口事件），新增规则预演/沙箱接口，补决策子系统健康指示器 |
 | 1.1.4 | 对标高星规则引擎与容错库做三项增量补强（详见下方「对标升级记录」）：MATCHES 正则预编译缓存、幂等存储过期项主动清理+指标、规则缓存命中率与引擎错误指标 |
 | 1.1.3 | 修正决策 API 集成测试的 traceId 取值：贪婪正则误取外层 `ApiResponse.traceId`（本次请求链路 id），改为按 `data.traceId` 结构解析——幂等重放本就应返回首次决策的 traceId |
 | 1.1.2 | 修正决策接口路径：`/decisions:evaluate` → `/decisions/evaluate`（`:action` 后缀不被 Spring MVC 路由解析，请求落入静态资源处理器并抛 NoResourceFoundException） |
@@ -264,6 +266,27 @@ k6 run -e BASE=http://localhost:8090 -e API_KEY=demo-tenant-key scripts/k6-decid
 - `README.md`（本节与可观测性表格）
 
 **验证：** `mvn -B test` → `Tests run: 25, Failures: 0, Errors: 0, Skipped: 0`，`BUILD SUCCESS`（H2 内存库，无需外部依赖）。
+
+
+## 第二轮深度升级（v1.1.5）
+
+本轮以"实际运行 + 并发走查"为准绳，只修真实可复现的问题，并补一个贴合风控领域的增量功能。每个 bug 均先写复现测试（先红后绿），再修复。
+
+### 修复的真实 bug
+
+1. **幂等键 check-then-act 竞态**（`decision/DecisionService`）。原实现 `idempotencyStore.get()` 查缓存后、`put()` 写回前的临界区未加锁：同一幂等键的并发重复提交会同时 miss，各自调用 `buildContext` 自增窗口计数、各自落审计，幂等承诺（网络重试不重复计数/重复放行）被击穿。修复：按 (租户,幂等键) 用 64 分片固定锁把"查缓存→执行→写回"串行化；无幂等键请求不加锁。回归测试 `DecisionIdempotencyConcurrencyTest`：16 线程同键并发，修复前 16 次全部首次执行，修复后恰好 1 次执行 + 15 次幂等回放，窗口计数与审计均只发生 1 次。
+2. **内存特征存储清理误删长窗口事件**（`feature/InMemoryFeatureStore`）。原 `@Scheduled cleanup()` 硬编码按 300s 裁剪事件，当调用方窗口大于 300s 时，仍在窗口内的事件会被当成过期淘汰，导致滑动窗口计数从真实值掉到 0。修复：每个桶记录其声明过的最大窗口，清理按"各桶自己的窗口"裁剪，仅回收空桶；并注入可控时钟便于测试。回归测试 `InMemoryFeatureStoreTest#cleanupDoesNotEvictEventsStillInsideALongerWindow`：600s 窗口的事件在 400s 时（仍在窗口内）不被清理，700s 时（出窗）被正确回收。
+
+### 新增功能：规则预演 / 沙箱
+
+`POST /api/v1/sandbox/evaluate`：用一份样本数据在指定规则集版本上干跑一次规则，用于规则上线前验证命中效果。与在线决策的差异：可指定**未发布的历史/草稿版本**（缺省取生效版本）、窗口计数只读请求给定的快照（**不调用 FeatureStore 自增**）、**不落审计、不做幂等、不走灰度路由**，默认返回完整求值轨迹。纯只读、零副作用，不影响生产链路与既有 API 契约。测试 `SandboxIntegrationTest`。
+
+### 工程化
+
+- 新增决策子系统健康指示器 `config/FlowLinkHealthIndicator`：`/actuator/health` 透出特征存储后端（memory/redis）与规则集缓存规模。
+- 保持 Spring Boot 3.3.5 管理线，未跨大版本升级、未引入重型框架；k6/compose/Dockerfile 保留不动。
+
+**验证：** `mvn -B test` → `Tests run: 30, Failures: 0, Errors: 0, Skipped: 0`，`BUILD SUCCESS`。
 
 ## 12. License
 

@@ -26,7 +26,7 @@ public record EvaluateResponse(String traceId,
                                   int score,
                                   String reason) {
 
-        static MatchedRuleView from(DecisionResult.MatchedRule rule) {
+        public static MatchedRuleView from(DecisionResult.MatchedRule rule) {
             return new MatchedRuleView(rule.ruleId(), rule.name(), rule.priority(),
                     rule.decision(), rule.score(), rule.reason());
         }
