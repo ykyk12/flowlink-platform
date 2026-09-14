@@ -37,6 +37,10 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class DecisionService {
 
+    /** 幂等键分桶锁数量：固定切片，避免为每个幂等键建锁对象导致无界增长。 */
+    private static final int IDEM_LOCK_STRIPES = 64;
+    private static final Object[] IDEM_LOCKS = buildStripes();
+
     private final RuleSetService ruleSetService;
     private final RuleCache ruleCache;
     private final DecisionEngine engine;
@@ -48,12 +52,26 @@ public class DecisionService {
     private final ObjectMapper objectMapper;
 
     public EvaluateResponse evaluate(String tenantId, EvaluateRequest request) {
-        Optional<EvaluateResponse> cached = idempotencyStore.get(tenantId, request.idempotencyKey());
-        if (cached.isPresent()) {
-            metrics.recordIdempotentHit();
-            return replayOf(cached.get());
+        String idempotencyKey = request.idempotencyKey();
+        // 无幂等键：直接执行，无需加锁
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doEvaluate(tenantId, request);
         }
+        // 按 (租户,幂等键) 分桶加锁：把"查缓存 → 做事 → 写缓存"串行化，
+        // 避免并发重复提交同时 miss 幂等缓存，导致窗口计数被多次自增、审计落多条。
+        synchronized (idemLock(tenantId + "::" + idempotencyKey)) {
+            Optional<EvaluateResponse> cached = idempotencyStore.get(tenantId, idempotencyKey);
+            if (cached.isPresent()) {
+                metrics.recordIdempotentHit();
+                return replayOf(cached.get());
+            }
+            EvaluateResponse response = doEvaluate(tenantId, request);
+            idempotencyStore.put(tenantId, idempotencyKey, response, properties.getIdempotencyTtlSeconds());
+            return response;
+        }
+    }
 
+    private EvaluateResponse doEvaluate(String tenantId, EvaluateRequest request) {
         String traceId = currentTraceId();
         DecisionContext context = buildContext(tenantId, request);
 
@@ -105,7 +123,6 @@ public class DecisionService {
             metrics.recordCanary(version);
         }
         metrics.recordLatency(result.getLatencyMicros());
-        idempotencyStore.put(tenantId, request.idempotencyKey(), response, properties.getIdempotencyTtlSeconds());
         return response;
     }
 
@@ -177,5 +194,17 @@ public class DecisionService {
     private String currentTraceId() {
         String traceId = MDC.get(TraceIdFilter.TRACE_ID);
         return traceId == null || traceId.isBlank() ? Ids.shortId() : traceId;
+    }
+
+    private static Object[] buildStripes() {
+        Object[] locks = new Object[IDEM_LOCK_STRIPES];
+        for (int i = 0; i < IDEM_LOCK_STRIPES; i++) {
+            locks[i] = new Object();
+        }
+        return locks;
+    }
+
+    private static Object idemLock(String key) {
+        return IDEM_LOCKS[Math.floorMod(key.hashCode(), IDEM_LOCK_STRIPES)];
     }
 }
