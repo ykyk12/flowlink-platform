@@ -32,6 +32,14 @@ management:
   endpoint:
     health:
       show-details: always
+  health:
+    redis:
+      # 默认零依赖模式（app.feature-store=memory）下，Redis 根本没被使用，
+      # 但 spring-boot-starter-data-redis 在 classpath 上会自动装配 RedisHealthIndicator。
+      # 本机没起 Redis 时它报 DOWN，把整体健康度聚合成 503（本轮真实踩到）。
+      # 内存模式不是 Redis 的客户端，不该被它摘流；默认关闭探针，需要时 REDIS_HEALTH_ENABLED=true 打开。
+      # 生产 profile（application-prod.yml，feature-store=redis）再显式置 true。
+      enabled: ${REDIS_HEALTH_ENABLED:false}
 
 springdoc:
   swagger-ui:

@@ -17,6 +17,12 @@ app:
   # 生产建议关闭演示数据
   bootstrap-demo-data: false
 
+management:
+  health:
+    # 生产 Redis 是特征存储真依赖，保留健康探针
+    redis:
+      enabled: true
+
 logging:
   level:
     com.flowlink: INFO
